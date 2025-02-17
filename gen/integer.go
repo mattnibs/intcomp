@@ -125,28 +125,22 @@ func (dpnb *deltapackNByte) packLines(zigzag, ntz bool) []string {
 			// force signed
 			diff = fmt.Sprintf("int%d(%s)", dpnb.dpn.dp.Bits, diff)
 			// zigzag encoding of v: (v << 1) ^ (v >> 31)
-			diff = fmt.Sprintf("((%s) << 1) ^ ((%s) >> %d)", diff, diff, dpnb.dpn.dp.Bits-1)
+			if !ntz {
+				diff = fmt.Sprintf("((%s) << 1) ^ ((%s) >> %d)", diff, diff, dpnb.dpn.dp.Bits-1)
+			} else {
+				diff = fmt.Sprintf("((((%s >> ntz) ^ (%s >> 63)) << 1) | ((%s >> 63) & 1))", diff, diff, diff)
+			}
+		} else if ntz {
+			diff = fmt.Sprintf("((%s) >> ntz)", diff)
 		}
 		var line string
 		switch {
 		case ishift < 0:
-			if ntz {
-				line = fmt.Sprintf("(%s) >> ((%d+ntz)&%d)", diff, -ishift, dpnb.dpn.dp.Bits-1)
-			} else {
-				line = fmt.Sprintf("(%s) >> %d", diff, -ishift)
-			}
+			line = fmt.Sprintf("(%s) >> %d", diff, -ishift)
 		case ishift > 0:
-			if ntz {
-				line = fmt.Sprintf("((%s) >> ntz << %d)", diff, ishift)
-			} else {
-				line = fmt.Sprintf("((%s) << %d)", diff, ishift)
-			}
+			line = fmt.Sprintf("((%s) << %d)", diff, ishift)
 		default:
-			if ntz {
-				line = fmt.Sprintf("(%s) >> ntz", diff)
-			} else {
-				line = diff
-			}
+			line = diff
 		}
 		if offset+nbBytes < maxOffset {
 			line += " | "
@@ -228,7 +222,12 @@ func (dunb *deltaunpackNByte) unpackLine(zigzag, ntz bool) string {
 			val = fmt.Sprintf("int%d(%s)", dunb.dpn.dp.Bits, val)
 		}
 		// zigzag decoding of val: (-(val & 1))^(val>>1))
-		val = fmt.Sprintf("((-((%s) & 1))^((%s)>>1))", val, val)
+		if ntz {
+			val = fmt.Sprintf("((-((%s) & 1))^((%s)>>1<<ntz))", val, val)
+		} else {
+			val = fmt.Sprintf("((-((%s) & 1))^((%s)>>1))", val, val)
+		}
+		return fmt.Sprintf("T(%s) + %s", val, out)
 	}
 	if ntz {
 		return fmt.Sprintf("T(%s) << ntz + %s", val, out)
